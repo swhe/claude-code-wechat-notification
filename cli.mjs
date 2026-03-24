@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code WeChat Channel — CLI entry point
+ * Claude Code WeChat Notification MCP Server — CLI entry point
  *
  * Usage:
- *   npx claude-code-wechat-channel setup   — WeChat QR login
- *   npx claude-code-wechat-channel start   — Start channel server (used by .mcp.json)
- *   npx claude-code-wechat-channel install — Write .mcp.json to current directory
+ *   npx claude-code-wechat-notification start   — Start MCP server (used by .mcp.json)
+ *   npx claude-code-wechat-notification install — Write .mcp.json to current directory
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -32,7 +31,7 @@ function getNodePath() {
 function runScript(script, args = []) {
   const scriptPath = resolve(DIST_DIR, script);
   if (!existsSync(scriptPath)) {
-    console.error(`Error: ${scriptPath} not found. Package may be corrupted.`);
+    console.error(`Error: ${scriptPath} not found. Run 'npm run build' first.`);
     process.exit(1);
   }
 
@@ -51,7 +50,7 @@ function install() {
     mcpServers: {
       wechat: {
         command: "npx",
-        args: ["-y", "claude-code-wechat-channel", "start"],
+        args: ["-y", "claude-code-wechat-notification", "start"],
       },
     },
   };
@@ -76,20 +75,19 @@ function install() {
 
   console.log(`
 Next steps:
-  1. Run: npx claude-code-wechat-channel setup
+  1. 首次运行会自动弹出微信扫码登录
   2. Then: claude --dangerously-load-development-channels server:wechat
 `);
 }
 
 function help() {
   console.log(`
-  Claude Code WeChat Channel
+  Claude Code WeChat Notification MCP Server
 
-  Usage: npx claude-code-wechat-channel <command>
+  Usage: npx claude-code-wechat-notification <command>
 
   Commands:
-    setup     WeChat QR login (scan to authenticate)
-    start     Start the channel MCP server
+    start     Start the MCP server
     install   Write .mcp.json to current directory
     help      Show this help message
 `);
@@ -98,9 +96,6 @@ function help() {
 const command = process.argv[2];
 
 switch (command) {
-  case "setup":
-    runScript("setup.js");
-    break;
   case "start":
     runScript("wechat-channel.js");
     break;
