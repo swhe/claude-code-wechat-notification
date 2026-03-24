@@ -5,25 +5,43 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toESMCache_node;
+var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
+  var canCache = mod != null && typeof mod === "object";
+  if (canCache) {
+    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
+    var cached = cache.get(mod);
+    if (cached)
+      return cached;
+  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: () => mod[key],
+        get: __accessProp.bind(mod, key),
         enumerable: true
       });
+  if (canCache)
+    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: (newValue) => all[name] = () => newValue
+      set: __exportSetter.bind(all, name)
     });
 };
 
@@ -6286,7 +6304,7 @@ var require_formats = __commonJS((exports) => {
   }
   var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
   function getTime(strictTimeZone) {
-    return function time(str) {
+    return function time3(str) {
       const matches = TIME.exec(str);
       if (!matches)
         return false;
@@ -15458,11 +15476,12 @@ var ServerResultSchema2 = union([
 
 // wechat-channel.ts
 var CHANNEL_NAME = "wechat";
-var CHANNEL_VERSION = "0.1.0";
+var CHANNEL_VERSION = "0.2.0";
 var DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
 var BOT_TYPE = "3";
 var CREDENTIALS_DIR = path.join(process.env.HOME || "~", ".claude", "channels", "wechat");
 var CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "account.json");
+var CONTEXT_TOKEN_FILE = path.join(CREDENTIALS_DIR, "context_token.txt");
 var LONG_POLL_TIMEOUT_MS = 35000;
 var MAX_CONSECUTIVE_FAILURES = 3;
 var BACKOFF_DELAY_MS = 30000;
@@ -15490,6 +15509,17 @@ function saveCredentials(data) {
   try {
     fs.chmodSync(CREDENTIALS_FILE, 384);
   } catch {}
+}
+function saveContextToken(token) {
+  fs.writeFileSync(CONTEXT_TOKEN_FILE, token, "utf-8");
+}
+function loadContextToken() {
+  try {
+    if (fs.existsSync(CONTEXT_TOKEN_FILE)) {
+      return fs.readFileSync(CONTEXT_TOKEN_FILE, "utf-8").trim();
+    }
+  } catch {}
+  return null;
 }
 function randomWechatUin() {
   const uint32 = crypto.randomBytes(4).readUInt32BE(0);
@@ -15621,7 +15651,6 @@ async function doQRLogin(baseUrl) {
 }
 var MSG_TYPE_USER = 1;
 var MSG_ITEM_TEXT = 1;
-var MSG_ITEM_VOICE = 3;
 var MSG_TYPE_BOT = 2;
 var MSG_STATE_FINISH = 2;
 function extractTextFromMessage(msg) {
@@ -15629,30 +15658,10 @@ function extractTextFromMessage(msg) {
     return "";
   for (const item of msg.item_list) {
     if (item.type === MSG_ITEM_TEXT && item.text_item?.text) {
-      const text = item.text_item.text;
-      const ref = item.ref_msg;
-      if (!ref)
-        return text;
-      const parts = [];
-      if (ref.title)
-        parts.push(ref.title);
-      if (!parts.length)
-        return text;
-      return `[\u5F15\u7528: ${parts.join(" | ")}]
-${text}`;
-    }
-    if (item.type === MSG_ITEM_VOICE && item.voice_item?.text) {
-      return item.voice_item.text;
+      return item.text_item.text;
     }
   }
   return "";
-}
-var contextTokenCache = new Map;
-function cacheContextToken(userId, token) {
-  contextTokenCache.set(userId, token);
-}
-function getCachedContextToken(userId) {
-  return contextTokenCache.get(userId);
 }
 async function getUpdates(baseUrl, token, getUpdatesBuf) {
   try {
@@ -15701,51 +15710,55 @@ async function sendTextMessage(baseUrl, token, to, text, contextToken) {
 }
 var mcp = new Server({ name: CHANNEL_NAME, version: CHANNEL_VERSION }, {
   capabilities: {
-    experimental: { "claude/channel": {} },
     tools: {}
   },
-  instructions: [
-    `Messages from WeChat users arrive as <channel source="wechat" sender="..." sender_id="...">`,
-    "Reply using the wechat_reply tool. You MUST pass the sender_id from the inbound tag.",
-    "Messages are from real WeChat users via the WeChat ClawBot interface.",
-    "Respond naturally in Chinese unless the user writes in another language.",
-    "Keep replies concise \u2014 WeChat is a chat app, not an essay platform.",
-    "Strip markdown formatting (WeChat doesn't render it). Use plain text."
-  ].join(`
-`)
+  instructions: "\u5FAE\u4FE1\u901A\u77E5\u63D2\u4EF6\uFF0C\u652F\u6301\u53D1\u9001\u901A\u77E5\u5230\u5FAE\u4FE1\u3002\u4E0D\u63A5\u6536\u6765\u81EA\u5FAE\u4FE1\u7684\u6D88\u606F\u3002"
 });
 mcp.setRequestHandler(ListToolsRequestSchema2, async () => ({
   tools: [
     {
       name: "wechat_reply",
-      description: "Send a text reply back to the WeChat user",
+      description: "Send a text reply back to the WeChat user (sender_id defaults to last known user)",
       inputSchema: {
         type: "object",
         properties: {
           sender_id: {
             type: "string",
-            description: "The sender_id from the inbound <channel> tag (xxx@im.wechat format)"
+            description: "The sender_id from the inbound <channel> tag (xxx@im.wechat format). Optional - defaults to the last message sender."
           },
           text: {
             type: "string",
             description: "The plain-text message to send (no markdown)"
           }
         },
-        required: ["sender_id", "text"]
+        required: ["text"]
       }
     }
   ]
 }));
 var activeAccount = null;
+var lastSenderId = null;
 mcp.setRequestHandler(CallToolRequestSchema2, async (req) => {
   if (req.params.name === "wechat_reply") {
-    const { sender_id, text } = req.params.arguments;
+    const args = req.params.arguments;
+    const sender_id = args.sender_id ?? lastSenderId;
+    const text = args.text;
+    if (!sender_id) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "error: no sender_id. Either pass sender_id or wait for a message to set the default."
+          }
+        ]
+      };
+    }
     if (!activeAccount) {
       return {
         content: [{ type: "text", text: "error: not logged in" }]
       };
     }
-    const contextToken = getCachedContextToken(sender_id);
+    let contextToken = loadContextToken();
     if (!contextToken) {
       return {
         content: [
@@ -15780,7 +15793,7 @@ async function startPolling(account) {
       log(`\u6062\u590D\u4E0A\u6B21\u540C\u6B65\u72B6\u6001 (${getUpdatesBuf.length} bytes)`);
     }
   } catch {}
-  log("\u5F00\u59CB\u76D1\u542C\u5FAE\u4FE1\u6D88\u606F...");
+  log("\u5F00\u59CB\u76D1\u542C\u5FAE\u4FE1\u6D88\u606F\u4EE5\u83B7\u53D6 context_token...");
   while (true) {
     try {
       const resp = await getUpdates(baseUrl, token, getUpdatesBuf);
@@ -15812,19 +15825,10 @@ async function startPolling(account) {
           continue;
         const senderId = msg.from_user_id ?? "unknown";
         if (msg.context_token) {
-          cacheContextToken(senderId, msg.context_token);
+          saveContextToken(msg.context_token);
+          lastSenderId = senderId;
+          log(`\u5DF2\u7F13\u5B58 context_token for ${senderId}`);
         }
-        log(`\u6536\u5230\u6D88\u606F: from=${senderId} text=${text.slice(0, 50)}...`);
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: text,
-            meta: {
-              sender: senderId.split("@")[0] || senderId,
-              sender_id: senderId
-            }
-          }
-        });
       }
     } catch (err) {
       consecutiveFailures++;

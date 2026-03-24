@@ -1,7 +1,7 @@
 {
   "name": "claude-code-wechat-channel",
   "version": "0.2.0",
-  "description": "Claude Code Channel plugin for WeChat — bridge WeChat messages into Claude Code sessions via the official ilink API",
+  "description": "Claude Code WeChat 通知插件 — 通过 agent hook 在任务完成后发送微信通知",
   "type": "module",
   "bin": {
     "claude-code-wechat-channel": "./cli.mjs"

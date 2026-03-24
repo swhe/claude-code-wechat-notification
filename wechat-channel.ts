@@ -1,15 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Claude Code WeChat Channel Plugin
+ * Claude Code WeChat Notification Plugin
  *
- * Bridges WeChat messages into a Claude Code session via the Channels MCP protocol.
- * Uses the official WeChat ClawBot ilink API (same as @tencent-weixin/openclaw-weixin).
+ * 仅支持 Claude 任务完成后发送微信通知。
+ * 不再需要登录 claude.ai，通过 agent hook 触发通知发送。
  *
- * Flow:
- *   1. QR login via ilink/bot/get_bot_qrcode + get_qrcode_status
- *   2. Long-poll ilink/bot/getupdates for incoming WeChat messages
- *   3. Forward messages to Claude Code as <channel> events
- *   4. Expose a reply tool so Claude can send messages back via ilink/bot/sendmessage
+ * 使用官方微信 ClawBot ilink API。
  */
 
 import crypto from "node:crypto";
@@ -26,7 +22,7 @@ import {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const CHANNEL_NAME = "wechat";
-const CHANNEL_VERSION = "0.1.0";
+const CHANNEL_VERSION = "0.2.0";
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
 const BOT_TYPE = "3";
 const CREDENTIALS_DIR = path.join(
@@ -36,6 +32,7 @@ const CREDENTIALS_DIR = path.join(
   "wechat",
 );
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "account.json");
+const CONTEXT_TOKEN_FILE = path.join(CREDENTIALS_DIR, "context_token.txt");
 
 const LONG_POLL_TIMEOUT_MS = 35_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -79,6 +76,21 @@ function saveCredentials(data: AccountData): void {
   } catch {
     // best-effort
   }
+}
+
+function saveContextToken(token: string): void {
+  fs.writeFileSync(CONTEXT_TOKEN_FILE, token, "utf-8");
+}
+
+function loadContextToken(): string | null {
+  try {
+    if (fs.existsSync(CONTEXT_TOKEN_FILE)) {
+      return fs.readFileSync(CONTEXT_TOKEN_FILE, "utf-8").trim();
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 // ── WeChat ilink API ─────────────────────────────────────────────────────────
@@ -260,16 +272,9 @@ interface TextItem {
   text?: string;
 }
 
-interface RefMessage {
-  message_item?: MessageItem;
-  title?: string;
-}
-
 interface MessageItem {
   type?: number;
   text_item?: TextItem;
-  voice_item?: { text?: string };
-  ref_msg?: RefMessage;
 }
 
 interface WeixinMessage {
@@ -296,7 +301,6 @@ interface GetUpdatesResp {
 // Message type constants
 const MSG_TYPE_USER = 1;
 const MSG_ITEM_TEXT = 1;
-const MSG_ITEM_VOICE = 3;
 const MSG_TYPE_BOT = 2;
 const MSG_STATE_FINISH = 2;
 
@@ -304,31 +308,10 @@ function extractTextFromMessage(msg: WeixinMessage): string {
   if (!msg.item_list?.length) return "";
   for (const item of msg.item_list) {
     if (item.type === MSG_ITEM_TEXT && item.text_item?.text) {
-      const text = item.text_item.text;
-      const ref = item.ref_msg;
-      if (!ref) return text;
-      const parts: string[] = [];
-      if (ref.title) parts.push(ref.title);
-      if (!parts.length) return text;
-      return `[引用: ${parts.join(" | ")}]\n${text}`;
-    }
-    if (item.type === MSG_ITEM_VOICE && item.voice_item?.text) {
-      return item.voice_item.text;
+      return item.text_item.text;
     }
   }
   return "";
-}
-
-// ── Context Token Cache ──────────────────────────────────────────────────────
-
-const contextTokenCache = new Map<string, string>();
-
-function cacheContextToken(userId: string, token: string): void {
-  contextTokenCache.set(userId, token);
-}
-
-function getCachedContextToken(userId: string): string | undefined {
-  return contextTokenCache.get(userId);
 }
 
 // ── getUpdates / sendMessage ─────────────────────────────────────────────────
@@ -391,23 +374,16 @@ async function sendTextMessage(
   return clientId;
 }
 
-// ── MCP Channel Server ──────────────────────────────────────────────────────
+// ── MCP Server ──────────────────────────────────────────────────────────────
 
 const mcp = new Server(
   { name: CHANNEL_NAME, version: CHANNEL_VERSION },
   {
     capabilities: {
-      experimental: { "claude/channel": {} },
       tools: {},
     },
-    instructions: [
-      `Messages from WeChat users arrive as <channel source="wechat" sender="..." sender_id="...">`,
-      "Reply using the wechat_reply tool. You MUST pass the sender_id from the inbound tag.",
-      "Messages are from real WeChat users via the WeChat ClawBot interface.",
-      "Respond naturally in Chinese unless the user writes in another language.",
-      "Keep replies concise — WeChat is a chat app, not an essay platform.",
-      "Strip markdown formatting (WeChat doesn't render it). Use plain text.",
-    ].join("\n"),
+    instructions:
+      "微信通知插件，支持发送通知到微信。不接收来自微信的消息。",
   },
 );
 
@@ -416,40 +392,55 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "wechat_reply",
-      description: "Send a text reply back to the WeChat user",
+      description: "Send a text reply back to the WeChat user (sender_id defaults to last known user)",
       inputSchema: {
         type: "object" as const,
         properties: {
           sender_id: {
             type: "string",
             description:
-              "The sender_id from the inbound <channel> tag (xxx@im.wechat format)",
+              "The sender_id from the inbound <channel> tag (xxx@im.wechat format). Optional - defaults to the last message sender.",
           },
           text: {
             type: "string",
             description: "The plain-text message to send (no markdown)",
           },
         },
-        required: ["sender_id", "text"],
+        required: ["text"],
       },
     },
   ],
 }));
 
 let activeAccount: AccountData | null = null;
+let lastSenderId: string | null = null;
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (req.params.name === "wechat_reply") {
-    const { sender_id, text } = req.params.arguments as {
-      sender_id: string;
+    const args = req.params.arguments as {
+      sender_id?: string;
       text: string;
     };
+    const sender_id = args.sender_id ?? lastSenderId;
+    const text = args.text;
+
+    if (!sender_id) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "error: no sender_id. Either pass sender_id or wait for a message to set the default.",
+          },
+        ],
+      };
+    }
     if (!activeAccount) {
       return {
         content: [{ type: "text" as const, text: "error: not logged in" }],
       };
     }
-    const contextToken = getCachedContextToken(sender_id);
+    // Try to load context token from file
+    let contextToken = loadContextToken();
     if (!contextToken) {
       return {
         content: [
@@ -498,7 +489,7 @@ async function startPolling(account: AccountData): Promise<never> {
     // ignore
   }
 
-  log("开始监听微信消息...");
+  log("开始监听微信消息以获取 context_token...");
 
   while (true) {
     try {
@@ -537,9 +528,8 @@ async function startPolling(account: AccountData): Promise<never> {
         }
       }
 
-      // Process messages
+      // Process messages to extract and cache context_token
       for (const msg of resp.msgs ?? []) {
-        // Only process user messages (not bot messages)
         if (msg.message_type !== MSG_TYPE_USER) continue;
 
         const text = extractTextFromMessage(msg);
@@ -547,24 +537,12 @@ async function startPolling(account: AccountData): Promise<never> {
 
         const senderId = msg.from_user_id ?? "unknown";
 
-        // Cache context token for reply
+        // Cache context token for later use
         if (msg.context_token) {
-          cacheContextToken(senderId, msg.context_token);
+          saveContextToken(msg.context_token);
+          lastSenderId = senderId;
+          log(`已缓存 context_token for ${senderId}`);
         }
-
-        log(`收到消息: from=${senderId} text=${text.slice(0, 50)}...`);
-
-        // Push to Claude Code session
-        await mcp.notification({
-          method: "notifications/claude/channel",
-          params: {
-            content: text,
-            meta: {
-              sender: senderId.split("@")[0] || senderId,
-              sender_id: senderId,
-            },
-          },
-        });
       }
     } catch (err) {
       consecutiveFailures++;
@@ -602,7 +580,7 @@ async function main() {
 
   activeAccount = account;
 
-  // Start long-poll (runs forever)
+  // Start long-poll to collect context_token (runs forever)
   await startPolling(account);
 }
 
