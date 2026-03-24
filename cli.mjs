@@ -97,7 +97,7 @@ const command = process.argv[2];
 
 switch (command) {
   case "start":
-    runScript("wechat-channel.js");
+    runScript("wechat-notification.js");
     break;
   case "install":
     install();

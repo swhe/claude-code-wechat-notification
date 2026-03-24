@@ -4,7 +4,7 @@
   "description": "Claude Code WeChat 通知 MCP 服务器",
   "type": "module",
   "bin": {
-    "claude-code-wechat-channel": "./cli.mjs"
+    "claude-code-wechat-notification": "./cli.mjs"
   },
   "files": [
     "cli.mjs",
@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build wechat-channel.ts --target node --outfile dist/wechat-channel.js",
+    "build": "bun build wechat-notification.ts --target node --outfile dist/wechat-notification.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

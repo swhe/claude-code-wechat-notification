@@ -7534,7 +7534,7 @@ var require_main = __commonJS((exports, module) => {
   };
 });
 
-// wechat-channel.ts
+// wechat-notification.ts
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -15474,7 +15474,7 @@ var ServerResultSchema2 = union([
   CreateTaskResultSchema2
 ]);
 
-// wechat-channel.ts
+// wechat-notification.ts
 var CHANNEL_NAME = "wechat";
 var CHANNEL_VERSION = "0.2.0";
 var DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
@@ -15487,11 +15487,11 @@ var MAX_CONSECUTIVE_FAILURES = 3;
 var BACKOFF_DELAY_MS = 30000;
 var RETRY_DELAY_MS = 2000;
 function log(msg) {
-  process.stderr.write(`[wechat-channel] ${msg}
+  process.stderr.write(`[wechat-notification] ${msg}
 `);
 }
 function logError(msg) {
-  process.stderr.write(`[wechat-channel] ERROR: ${msg}
+  process.stderr.write(`[wechat-notification] ERROR: ${msg}
 `);
 }
 function loadCredentials() {
