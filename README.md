@@ -1,6 +1,6 @@
-# Claude Code WeChat 通知插件
+# Claude Code WeChat 通知 MCP
 
-通过 agent hook 在 Claude 任务完成后自动发送微信通知。
+Claude Code 的微信通知 MCP 服务器，通过 agent hook 在任务完成后发送微信通知。
 
 基于微信官方 ClawBot ilink API，无需登录 claude.ai。
 
@@ -18,18 +18,18 @@ Claude Code 任务完成 → Stop Hook → Agent Hook → wechat_reply tool → 
 
 ## 快速开始
 
-### 1. 微信扫码登录
+### 1. 启动 MCP 服务器
 
 ```bash
-npx claude-code-wechat-channel setup
+npx claude-code-wechat-notification start
 ```
 
-终端会显示二维码，用微信扫描并确认。凭据保存到 `~/.claude/channels/wechat/account.json`。
+首次运行时会自动弹出微信扫码登录。终端会显示二维码，用微信扫描并确认。凭据保存到 `~/.claude/channels/wechat/account.json`。
 
 ### 2. 生成 MCP 配置
 
 ```bash
-npx claude-code-wechat-channel install
+npx claude-code-wechat-notification install
 ```
 
 这会在当前目录生成（或更新） `.mcp.json`，指向本插件。
@@ -52,15 +52,7 @@ npx claude-code-wechat-channel install
 }
 ```
 
-### 4. 启动 MCP 服务器
-
-```bash
-npx claude-code-wechat-channel start
-```
-
-让 MCP 服务器在后台运行，持续监听微信消息以获取 `context_token`。
-
-### 5. 完成一次微信消息交互
+### 4. 完成一次微信消息交互
 
 为了让 MCP 获取 `context_token`，需要先让微信用户发送一条消息给 ClawBot。MCP 会自动缓存这个 token。
 
@@ -68,10 +60,9 @@ npx claude-code-wechat-channel start
 
 | 命令 | 说明 |
 |------|------|
-| `npx claude-code-wechat-channel setup` | 微信扫码登录 |
-| `npx claude-code-wechat-channel install` | 生成 .mcp.json 配置 |
-| `npx claude-code-wechat-channel start` | 启动 MCP 服务器（需在后台运行） |
-| `npx claude-code-wechat-channel help` | 显示帮助 |
+| `npx claude-code-wechat-notification install` | 生成 .mcp.json 配置 |
+| `npx claude-code-wechat-notification start` | 启动 MCP 服务器（首次运行自动扫码登录） |
+| `npx claude-code-wechat-notification help` | 显示帮助 |
 
 ## 技术细节
 

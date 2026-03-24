@@ -76,7 +76,7 @@ function install() {
   console.log(`
 Next steps:
   1. 首次运行会自动弹出微信扫码登录
-  2. Then: claude --dangerously-load-development-channels server:wechat
+  2. 然后启动 MCP: npx claude-code-wechat-notification start
 `);
 }
 

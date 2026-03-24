@@ -1,7 +1,7 @@
 {
-  "name": "claude-code-wechat-channel",
+  "name": "claude-code-wechat-notification",
   "version": "0.2.0",
-  "description": "Claude Code WeChat 通知插件 — 通过 agent hook 在任务完成后发送微信通知",
+  "description": "Claude Code WeChat 通知 MCP 服务器",
   "type": "module",
   "bin": {
     "claude-code-wechat-channel": "./cli.mjs"
@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build wechat-channel.ts --target node --outfile dist/wechat-channel.js && bun build setup.ts --target node --outfile dist/setup.js",
+    "build": "bun build wechat-channel.ts --target node --outfile dist/wechat-channel.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -29,13 +29,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Johnixr/claude-code-wechat-channel.git"
+    "url": "https://github.com/Johnixr/claude-code-wechat-notification.git"
   },
   "keywords": [
     "claude-code",
     "wechat",
     "mcp",
-    "channel",
+    "notification",
     "clawbot",
     "ai-agent"
   ]

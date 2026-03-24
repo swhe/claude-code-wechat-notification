@@ -42,11 +42,11 @@ const RETRY_DELAY_MS = 2_000;
 // ── Logging (stderr only — stdout is MCP stdio) ─────────────────────────────
 
 function log(msg: string) {
-  process.stderr.write(`[wechat-channel] ${msg}\n`);
+  process.stderr.write(`[wechat-notification] ${msg}\n`);
 }
 
 function logError(msg: string) {
-  process.stderr.write(`[wechat-channel] ERROR: ${msg}\n`);
+  process.stderr.write(`[wechat-notification] ERROR: ${msg}\n`);
 }
 
 // ── Credentials ──────────────────────────────────────────────────────────────
