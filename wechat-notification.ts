@@ -429,7 +429,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         content: [
           {
             type: "text" as const,
-            text: "error: no sender_id. Either pass sender_id or wait for a message to set the default.",
+            text: `error: no sender_id. args sender_id: ${args.sender_id}, lastSenderId: ${lastSenderId}.`,
           },
         ],
       };
