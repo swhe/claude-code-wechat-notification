@@ -15738,6 +15738,12 @@ mcp.setRequestHandler(ListToolsRequestSchema2, async () => ({
 }));
 var activeAccount = null;
 var lastSenderId = null;
+function initializeLastSenderId(account) {
+  lastSenderId = account.userId ?? null;
+  if (lastSenderId) {
+    log(`\u4F7F\u7528 account.userId \u4F5C\u4E3A lastSenderId: ${lastSenderId}`);
+  }
+}
 mcp.setRequestHandler(CallToolRequestSchema2, async (req) => {
   if (req.params.name === "wechat_reply") {
     const args = req.params.arguments;
@@ -15857,6 +15863,7 @@ async function main() {
     log(`\u4F7F\u7528\u5DF2\u4FDD\u5B58\u8D26\u53F7: ${account.accountId}`);
   }
   activeAccount = account;
+  initializeLastSenderId(account);
   await startPolling(account);
 }
 main().catch((err) => {

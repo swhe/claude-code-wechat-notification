@@ -415,6 +415,14 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 let activeAccount: AccountData | null = null;
 let lastSenderId: string | null = null;
 
+// 从 account.userId 初始化 lastSenderId
+function initializeLastSenderId(account: AccountData): void {
+  lastSenderId = account.userId ?? null;
+  if (lastSenderId) {
+    log(`使用 account.userId 作为 lastSenderId: ${lastSenderId}`);
+  }
+}
+
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (req.params.name === "wechat_reply") {
     const args = req.params.arguments as {
@@ -579,6 +587,9 @@ async function main() {
   }
 
   activeAccount = account;
+
+  // 初始化 lastSenderId
+  initializeLastSenderId(account);
 
   // Start long-poll to collect context_token (runs forever)
   await startPolling(account);
