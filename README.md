@@ -62,7 +62,59 @@ npx claude-code-wechat-notification install
 |------|------|
 | `npx claude-code-wechat-notification install` | 生成 .mcp.json 配置 |
 | `npx claude-code-wechat-notification start` | 启动 MCP 服务器（首次运行自动扫码登录） |
+| `npx claude-code-wechat-notification start --mode http` | 以 HTTP API 模式启动 |
 | `npx claude-code-wechat-notification help` | 显示帮助 |
+
+## HTTP API 模式
+
+除了 MCP stdio 模式外，还支持 HTTP API 模式，便于其他服务调用。
+
+### 启动 HTTP 服务器
+
+```bash
+npx claude-code-wechat-notification start --mode http
+```
+
+默认监听 `127.0.0.1:3100`，可通过 `--port` 和 `--host` 自定义：
+
+```bash
+npx claude-code-wechat-notification start --mode http --port 8080 --host 0.0.0.0
+```
+
+### API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查 |
+| `/api/status` | GET | 获取登录状态、最后发送者、context_token 状态 |
+| `/api/send` | POST | 发送微信消息 |
+| `/mcp` | POST | MCP over HTTP 协议端点 |
+
+### 发送消息示例
+
+```bash
+# 健康检查
+curl http://127.0.0.1:3100/health
+
+# 查看状态
+curl http://127.0.0.1:3100/api/status
+
+# 发送消息（需要先让用户发送消息以获取 context_token）
+curl -X POST http://127.0.0.1:3100/api/send \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello from HTTP API"}'
+
+# 指定 sender_id 发送
+curl -X POST http://127.0.0.1:3100/api/send \
+  -H "Content-Type: application/json" \
+  -d '{"sender_id": "user@im.wechat", "text": "Hello"}'
+```
+
+### 注意事项
+
+- HTTP API 模式同时提供 MCP over HTTP 端点 (`/mcp`)
+- 首次使用仍需扫码登录（仅首次）
+- `context_token` 通过长轮询自动获取并缓存
 
 ## 技术细节
 

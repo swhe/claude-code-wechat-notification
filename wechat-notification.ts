@@ -10,10 +10,14 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  StreamableHTTPServerTransport,
+} from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -565,12 +569,176 @@ async function startPolling(account: AccountData): Promise<never> {
   }
 }
 
+// ── HTTP Server ─────────────────────────────────────────────────────────────
+
+const HTTP_DEFAULT_PORT = 3100;
+const HTTP_DEFAULT_HOST = "127.0.0.1";
+
+interface HttpApiConfig {
+  port: number;
+  host: string;
+}
+
+async function createHttpServer(account: AccountData, config: HttpApiConfig) {
+  const { baseUrl, token } = account;
+  const { port, host } = config;
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless mode
+  });
+
+  // Connect MCP server to HTTP transport
+  mcp.connect(transport);
+
+  // HTTP request handler
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://${host}:${port}`);
+
+    // CORS headers
+    const setCorsHeaders = () => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    };
+
+    // Handle CORS preflight
+    if (req.method === "OPTIONS") {
+      setCorsHeaders();
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // GET /health - health check
+    if (url.pathname === "/health" && req.method === "GET") {
+      setCorsHeaders();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", mode: "http" }));
+      return;
+    }
+
+    // POST /api/send - send WeChat message
+    if (url.pathname === "/api/send" && req.method === "POST") {
+      setCorsHeaders();
+      try {
+        const body = await new Promise<string>((resolve, reject) => {
+          let data = "";
+          req.on("data", (chunk) => (data += chunk));
+          req.on("end", () => resolve(data));
+          req.on("error", reject);
+        });
+
+        const parsed = JSON.parse(body);
+        const { sender_id, text } = parsed;
+
+        const targetSenderId = sender_id ?? lastSenderId;
+        if (!targetSenderId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "no sender_id" }));
+          return;
+        }
+
+        const contextToken = loadContextToken();
+        if (!contextToken) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "no context_token. User may need to send a message first.",
+          }));
+          return;
+        }
+
+        await sendTextMessage(baseUrl, token, targetSenderId, text, contextToken);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "sent", to: targetSenderId }));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+      return;
+    }
+
+    // GET /api/status - get current status
+    if (url.pathname === "/api/status" && req.method === "GET") {
+      setCorsHeaders();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        logged_in: !!activeAccount,
+        last_sender_id: lastSenderId,
+        has_context_token: !!loadContextToken(),
+      }));
+      return;
+    }
+
+    // Pass non-API requests to MCP transport
+    if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
+      // For MCP over HTTP, we need to handle it specially
+      // The transport handles the MCP protocol
+      try {
+        await transport.handleRequest(req, res, req.url);
+      } catch (err) {
+        logError(`MCP handler error: ${String(err)}`);
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end();
+        }
+      }
+      return;
+    }
+
+    // Not found
+    setCorsHeaders();
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  return new Promise<http.Server>((resolve) => {
+    server.listen(port, host, () => {
+      log(`HTTP API 服务器已启动: http://${host}:${port}`);
+      log(`  - GET  /health        - 健康检查`);
+      log(`  - GET  /api/status    - 获取状态`);
+      log(`  - POST /api/send       - 发送微信消息`);
+      log(`  - POST /mcp           - MCP over HTTP`);
+      resolve(server);
+    });
+  });
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
+type ServerMode = "stdio" | "http";
+
 async function main() {
-  // Connect MCP transport first (Claude Code expects stdio handshake)
-  await mcp.connect(new StdioServerTransport());
-  log("MCP 连接就绪");
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  let mode: ServerMode = "stdio";
+  let httpPort = HTTP_DEFAULT_PORT;
+  let httpHost = HTTP_DEFAULT_HOST;
+
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case "--mode":
+      case "-m":
+        mode = args[++i] as ServerMode;
+        break;
+      case "--port":
+      case "-p":
+        httpPort = parseInt(args[++i], 10);
+        break;
+      case "--host":
+      case "-h":
+        httpHost = args[++i];
+        break;
+      case "http":
+      case "stdio":
+        mode = args[i] as ServerMode;
+        break;
+    }
+  }
+
+  if (mode !== "stdio" && mode !== "http") {
+    logError(`Unknown mode: ${mode}. Use 'stdio' or 'http'.`);
+    process.exit(1);
+  }
 
   // Check for saved credentials
   let account = loadCredentials();
@@ -588,11 +756,22 @@ async function main() {
 
   activeAccount = account;
 
-  // 初始化 lastSenderId
+  // Initialize lastSenderId
   initializeLastSenderId(account);
 
-  // Start long-poll to collect context_token (runs forever)
-  await startPolling(account);
+  // Start long-poll to collect context_token (runs in background)
+  startPolling(account).catch((err) => {
+    logError(`轮询异常: ${String(err)}`);
+  });
+
+  if (mode === "http") {
+    // Start HTTP server
+    await createHttpServer(account, { port: httpPort, host: httpHost });
+  } else {
+    // Stdio mode - connect MCP transport
+    await mcp.connect(new StdioServerTransport());
+    log("MCP (stdio) 连接就绪");
+  }
 }
 
 main().catch((err) => {

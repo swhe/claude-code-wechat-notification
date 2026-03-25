@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build wechat-notification.ts --target node --outfile dist/wechat-notification.js",
+    "build": "npx --package=esbuild -- esbuild wechat-notification.ts --platform=node --target=node18 --outfile=dist/wechat-notification.js --format=esm",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

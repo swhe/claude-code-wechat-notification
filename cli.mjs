@@ -87,17 +87,32 @@ function help() {
   Usage: npx claude-code-wechat-notification <command>
 
   Commands:
-    start     Start the MCP server
-    install   Write .mcp.json to current directory
-    help      Show this help message
+    start [options]  Start the MCP server
+                     Options:
+                       --mode http|stdio  Server mode (default: stdio)
+                       --port <port>      HTTP port (default: 3100)
+                       --host <host>      HTTP host (default: 127.0.0.1)
+    install           Write .mcp.json to current directory
+    help              Show this help message
+
+  Examples:
+    # Start in stdio mode (default, for Claude Code)
+    npx claude-code-wechat-notification start
+
+    # Start in HTTP mode with default port
+    npx claude-code-wechat-notification start --mode http
+
+    # Start in HTTP mode with custom port
+    npx claude-code-wechat-notification start --mode http --port 8080
 `);
 }
 
 const command = process.argv[2];
+const startArgs = process.argv.slice(3); // Pass remaining args to start command
 
 switch (command) {
   case "start":
-    runScript("wechat-notification.js");
+    runScript("wechat-notification.js", startArgs);
     break;
   case "install":
     install();
